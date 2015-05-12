@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+<<<<<<< HEAD
 import urllib2
 import ssl
 import base64
@@ -51,6 +52,25 @@ class TestConfiguration():
     BOOTSTRAP_SERVER_CMD = ['runBootstrapServer.bat']
     DEVICE_SERVER_PATH = os.path.join(lwm2mCONF_folder_path,'device-server','bin')
     DEVICE_SERVER_CMD = ['runDS.bat']
+
+import uuid
+import urllib
+import urllib2
+import base64
+import json
+import re
+from sys import stdout
+
+class TestConfiguration():
+    BOOTSTRAP_SERVER = ""
+    BOOTSTRAP_PORT = ""
+    MDS_SERVER = ""
+    MDS_PORT = ""
+    DOMAIN = ""
+    BOOTSTRAP_ADDRESS = "coap://%s:%s" % (BOOTSTRAP_SERVER, BOOTSTRAP_PORT)
+    MDS_ADDRESS = "coap://%s:%s" % (MDS_SERVER, MDS_PORT)
+    BOOTSTRAP_USER = ""
+    BOOTSTRAP_PASS = ""
 
 class BootstrapServerAdapter():
     def __init__(self, configuration):
@@ -134,6 +154,16 @@ class BootstrapServerAdapter():
     def AddClientMapping(self, endpointName):
         """ Adds new client with endpointName as name to OMA server.
         """
+    def GetOMAServers(self):
+        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
+        result = urllib2.urlopen(request)
+        servers = json.loads(result.read())
+        return servers
+    
+    def AddClientMapping(self, endpointName):
+        """ Adds new client with endpointName as name to domain in OMA server.
+        """     
+        server_id = None
         
         if not endpointName:
             endpointName = "lwm2m-client-tester"
@@ -142,6 +172,14 @@ class BootstrapServerAdapter():
         
         if not server_id:
             print "No such server exists in bootstrap server"
+        # Get OMA server id
+        servers = self.GetOMAServers()
+        for oma_server in servers:
+            if oma_server["name"] == self.config.DOMAIN:
+                server_id = oma_server["id"]
+                break
+        
+        if not server_id:
             return
         
         mapping = {"name" : endpointName, "omaServerId" : server_id}
@@ -155,6 +193,15 @@ class BootstrapServerAdapter():
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.get_method = lambda: "DELETE"
         result = self.SendRequest(request, opener)
+        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
+        request.add_data(json.dumps(mapping))
+        result = urllib2.urlopen(request)
+        
+    def DeleteClientMapping(self, endpointName):
+        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
+        request.get_method = lambda: "DELETE"
+        result = opener.open(request)
 
 class LWM2MClientAutoTest():
     """ A simple LWM2M client test that sends bootstrap and mds server information to 
@@ -176,6 +223,7 @@ class LWM2MClientAutoTest():
 
         selftest.notify("HOST: Sending test configuration to DUT...")
         config_str = "<%s><%s><%s>\r\n" % (self.testconfig.BOOTSTRAP_ADDRESS, self.testconfig.MDS_ADDRESS, self.testconfig.EP_NAME)
+        config_str = "<%s><%s><%s>\r\n" % (self.testconfig.BOOTSTRAP_ADDRESS, self.testconfig.MDS_ADDRESS, self.testconfig.DOMAIN)
         selftest.notify("HOST: Sending configuration: %s" % config_str)
         selftest.mbed.serial_write(config_str)
 
@@ -296,6 +344,16 @@ class LWM2MClientAutoTest():
         self.send_configuration(selftest)
         
         start_time = time.time()
+        # Send test configuration to MUT
+        self.send_configuration(selftest)
+        
+        # Read unique endpoint name from MUT
+        self.testconfig.EP_NAME = self.read_endpointname(selftest)        
+            
+        # Add endpoint name as a client to OMA bootstrap server
+        bootstrap_server = BootstrapServerAdapter(self.testconfig)
+        bootstrap_server.AddClientMapping(self.testconfig.EP_NAME)
+        
         try:
             while True:
                 c = selftest.mbed.serial_read(512)
@@ -309,6 +367,7 @@ class LWM2MClientAutoTest():
                     result = self.suite_result_check(testoutput, selftest)
                     break
                     
+                stdout.flush()     
         except KeyboardInterrupt, _:
             selftest.notify("\r\n[CTRL+C] exit")
             result = selftest.RESULT_ERROR
@@ -321,5 +380,6 @@ class LWM2MClientAutoTest():
         
         elapsedTime = time.time() - start_time
         selftest.notify("HOST:Test completed in %.0f seconds\n" % elapsedTime)
+        bootstrap_server.DeleteClientMapping(self.testconfig.EP_NAME)
         
         return result
