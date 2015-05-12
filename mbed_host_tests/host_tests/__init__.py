@@ -28,3 +28,5 @@ from tcpecho_server_auto import TCPEchoServerTest
 from udpecho_server_auto import UDPEchoServerTest
 from tcpecho_client_auto import TCPEchoClientTest
 from udpecho_client_auto import UDPEchoClientTest
+from lwm2mclient_auto import LWM2MClientAutoTest
+from simple_auto import SimpleAuto
