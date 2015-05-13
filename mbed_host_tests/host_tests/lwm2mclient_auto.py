@@ -24,15 +24,15 @@ import re
 from sys import stdout
 
 class TestConfiguration():
-    BOOTSTRAP_SERVER = ""
-    BOOTSTRAP_PORT = ""
-    MDS_SERVER = ""
-    MDS_PORT = ""
-    DOMAIN = ""
+    BOOTSTRAP_SERVER = "10.45.3.10"
+    BOOTSTRAP_PORT = "5693"
+    MDS_SERVER = "10.45.3.10"
+    MDS_PORT = "5683"
+    BOOTSTRAP_SERVER_NAME = "test"
     BOOTSTRAP_ADDRESS = "coap://%s:%s" % (BOOTSTRAP_SERVER, BOOTSTRAP_PORT)
     MDS_ADDRESS = "coap://%s:%s" % (MDS_SERVER, MDS_PORT)
-    BOOTSTRAP_USER = ""
-    BOOTSTRAP_PASS = ""
+    BOOTSTRAP_USER = "admin"
+    BOOTSTRAP_PASS = "admin"
 
 class BootstrapServerAdapter():
     def __init__(self, configuration):
@@ -52,20 +52,39 @@ class BootstrapServerAdapter():
         servers = json.loads(result.read())
         return servers
     
+    def GetOMAClients(self):
+        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-clients" % self.config.BOOTSTRAP_SERVER)
+        result = urllib2.urlopen(request)
+        clients = json.loads(result.read())
+        return clients
+    
+    def GetOMAServerId(self, server_name):
+        server_id = None
+        
+        # Get OMA server id
+        servers = self.GetOMAServers()
+        for oma_server in servers:
+            if oma_server["name"] == server_name:
+                server_id = oma_server["id"]
+                break
+        
+        return server_id
+    
+    def ClientMappingExists(self, endpointName):
+        clients = self.GetOMAClients()
+        for client in clients:
+            if client["name"] == endpointName:
+                return True
+        return False
+    
     def AddClientMapping(self, endpointName):
         """ Adds new client with endpointName as name to domain in OMA server.
-        """     
-        server_id = None
+        """
         
         if not endpointName:
             endpointName = "lwm2m-client-tester"
            
-        # Get OMA server id
-        servers = self.GetOMAServers()
-        for oma_server in servers:
-            if oma_server["name"] == self.config.DOMAIN:
-                server_id = oma_server["id"]
-                break
+        server_id = self.GetOMAServerId(self.config.BOOTSTRAP_SERVER_NAME)
         
         if not server_id:
             return
@@ -101,7 +120,7 @@ class LWM2MClientAutoTest():
         selftest.notify(c.strip())
 
         selftest.notify("HOST: Sending test configuration to DUT...")
-        config_str = "<%s><%s><%s>\r\n" % (self.testconfig.BOOTSTRAP_ADDRESS, self.testconfig.MDS_ADDRESS, self.testconfig.DOMAIN)
+        config_str = "<%s><%s><%s>\r\n" % (self.testconfig.BOOTSTRAP_ADDRESS, self.testconfig.MDS_ADDRESS, self.testconfig.BOOTSTRAP_SERVER_NAME)
         selftest.notify("HOST: Sending configuration: %s" % config_str)
         selftest.mbed.serial_write(config_str)
 
@@ -122,6 +141,16 @@ class LWM2MClientAutoTest():
             
         return epname
     
+    def suite_result_check(self, ser, selftest):
+        m = re.search("Suite: result (success|failure)", ser)
+        if not m:
+            return selftest.RESULT_FAILURE
+        
+        if m.group(1) == "success":
+            return selftest.RESULT_SUCCESS
+        
+        return selftest.RESULT_FAILURE
+    
     def test(self, selftest):
         result = selftest.RESULT_PASSIVE
         testoutput = ""
@@ -132,9 +161,11 @@ class LWM2MClientAutoTest():
         # Read unique endpoint name from MUT
         self.testconfig.EP_NAME = self.read_endpointname(selftest)        
             
-        # Add endpoint name as a client to OMA bootstrap server
+        # Add endpoint name as a client to OMA bootstrap server if it doesn't already exist
         bootstrap_server = BootstrapServerAdapter(self.testconfig)
-        bootstrap_server.AddClientMapping(self.testconfig.EP_NAME)
+        if not bootstrap_server.ClientMappingExists(self.testconfig.EP_NAME):
+            selftest.notify("Host: Adding OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
+            bootstrap_server.AddClientMapping(self.testconfig.EP_NAME)
         
         try:
             while True:
@@ -142,10 +173,18 @@ class LWM2MClientAutoTest():
                 if c is None:
                     result = selftest.RESULT_IO_SERIAL
                 stdout.write(c)
-                stdout.flush()     
+                stdout.flush()
+                testoutput += c
+                # Check for suite result
+                if "Suite: result" in testoutput:
+                    result = self.suite_result_check(testoutput, selftest)
+                    break
+                    
         except KeyboardInterrupt, _:
             selftest.notify("\r\n[CTRL+C] exit")
             result = selftest.RESULT_ERROR
+        
+        selftest.notify("Host: Deleting OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
         
         bootstrap_server.DeleteClientMapping(self.testconfig.EP_NAME)
         
