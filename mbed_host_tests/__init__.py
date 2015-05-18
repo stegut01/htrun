@@ -37,7 +37,6 @@ from host_tests.udpecho_server_auto import UDPEchoServerTest
 from host_tests.tcpecho_client_auto import TCPEchoClientTest
 from host_tests.udpecho_client_auto import UDPEchoClientTest
 from host_tests.lwm2mclient_auto import LWM2MClientAutoTest
-from host_tests.simple_auto import SimpleAuto
 from host_tests.test_socket_server_udp import UDPSocketServerEchoExtTest
 from host_tests.test_socket_server_tcp import TCPSocketServerEchoExtTest
 
@@ -61,7 +60,6 @@ HOSTREGISTRY.register_host_test("udpecho_server_auto", UDPEchoServerTest())
 HOSTREGISTRY.register_host_test("tcpecho_client_auto", TCPEchoClientTest())
 HOSTREGISTRY.register_host_test("udpecho_client_auto", UDPEchoClientTest())
 HOSTREGISTRY.register_host_test("lwm2mclient_auto", LWM2MClientAutoTest())
-HOSTREGISTRY.register_host_test("simple_auto", SimpleAuto())
 HOSTREGISTRY.register_host_test("test_socket_server_udp", UDPSocketServerEchoExtTest())
 HOSTREGISTRY.register_host_test("test_socket_server_tcp", TCPSocketServerEchoExtTest())
 
