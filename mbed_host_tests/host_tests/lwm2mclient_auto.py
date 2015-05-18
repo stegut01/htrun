@@ -22,13 +22,18 @@ import base64
 import json
 import re
 from sys import stdout
+import time
+import socket
 
 class TestConfiguration():
-    BOOTSTRAP_SERVER = "10.45.3.10"
+    OWN_PC_ADDRESS = "10.45.2.27"
+    #BOOTSTRAP_SERVER = "10.45.3.10"
+    BOOTSTRAP_SERVER = OWN_PC_ADDRESS
     BOOTSTRAP_PORT = "5693"
-    MDS_SERVER = "10.45.3.10"
+    #MDS_SERVER = "10.45.3.10"
+    MDS_SERVER = OWN_PC_ADDRESS
     MDS_PORT = "5683"
-    BOOTSTRAP_SERVER_NAME = "test"
+    BOOTSTRAP_SERVER_NAME = "test" #todo rename this to 
     BOOTSTRAP_ADDRESS = "coap://%s:%s" % (BOOTSTRAP_SERVER, BOOTSTRAP_PORT)
     MDS_ADDRESS = "coap://%s:%s" % (MDS_SERVER, MDS_PORT)
     BOOTSTRAP_USER = "admin"
@@ -50,6 +55,9 @@ class BootstrapServerAdapter():
         request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
         result = urllib2.urlopen(request)
         servers = json.loads(result.read())
+        #puukko
+        #selftest.notify("Host: servers: %s" % servers)
+        
         return servers
     
     def GetOMAClients(self):
@@ -150,7 +158,24 @@ class LWM2MClientAutoTest():
             return selftest.RESULT_SUCCESS
         
         return selftest.RESULT_FAILURE
-    
+
+# This is not in use, saved for future development.
+#    
+#     def detect_local_bootstrap_server(self):
+#         (hostname, aliaslist, ipaddresslist) = socket.gethostbyname_ex(socket.gethostname())
+#         
+#         conf = TestConfiguration()
+#         #ipaddresslist = ['10.45.2.11', 'localhost']
+#         for ip in ipaddresslist:
+#             #print "IP:" + ip
+#             try:
+#                 conf.BOOTSTRAP_SERVER = ip
+#                 adapter = BootstrapServerAdapter(conf)
+#                 servers = adapter.GetOMAServers()
+#                 print "Servers for %s: %s" % (ip, servers)
+#             except:
+#                 print "exception"
+                
     def test(self, selftest):
         result = selftest.RESULT_PASSIVE
         testoutput = ""
@@ -167,6 +192,7 @@ class LWM2MClientAutoTest():
             selftest.notify("Host: Adding OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
             bootstrap_server.AddClientMapping(self.testconfig.EP_NAME)
         
+        start_time = time.time()
         try:
             while True:
                 c = selftest.mbed.serial_read(512)
@@ -187,5 +213,8 @@ class LWM2MClientAutoTest():
         selftest.notify("Host: Deleting OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
         
         bootstrap_server.DeleteClientMapping(self.testconfig.EP_NAME)
+
+        elapsedTime = time.time() - start_time
+        selftest.notify("Host:Test completed in %.0f seconds\n" % elapsedTime)
         
         return result
