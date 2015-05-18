@@ -15,15 +15,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import uuid
-import urllib
 import urllib2
 import base64
 import json
 import re
 from sys import stdout
 import time
-import socket
 
 class TestConfiguration():
     OWN_PC_ADDRESS = "10.45.2.27"
