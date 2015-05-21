@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import ssl
 import urllib2
 import ssl
 import base64
@@ -77,13 +78,13 @@ class BootstrapServerAdapter():
     
     def GetOMAServers(self):
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
-        result = urllib2.urlopen(request)
-        servers = json.loads(result.read())        
+        result = urllib2.urlopen(request, context=self.context)
+        servers = json.loads(result.read())
         return servers
     
     def GetOMAClients(self):
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients" % self.config.BOOTSTRAP_SERVER)
-        result = urllib2.urlopen(request)
+        result = urllib2.urlopen(request, context=self.context)
         clients = json.loads(result.read())
         return clients
     
@@ -122,7 +123,7 @@ class BootstrapServerAdapter():
         
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.add_data(json.dumps(mapping))
-        result = urllib2.urlopen(request)
+        result = urllib2.urlopen(request, context=self.context)
         
     def DeleteClientMapping(self, endpointName):
         opener = urllib2.build_opener(urllib2.HTTPSHandler(context=self.context))
@@ -179,23 +180,6 @@ class LWM2MClientAutoTest():
             return selftest.RESULT_SUCCESS
         
         return selftest.RESULT_FAILURE
-
-# This is not in use, saved for future development.
-#    
-#     def detect_local_bootstrap_server(self):
-#         (hostname, aliaslist, ipaddresslist) = socket.gethostbyname_ex(socket.gethostname())
-#         
-#         conf = TestConfiguration()
-#         #ipaddresslist = ['10.45.2.11', 'localhost']
-#         for ip in ipaddresslist:
-#             #print "IP:" + ip
-#             try:
-#                 conf.BOOTSTRAP_SERVER = ip
-#                 adapter = BootstrapServerAdapter(conf)
-#                 servers = adapter.GetOMAServers()
-#                 print "Servers for %s: %s" % (ip, servers)
-#             except:
-#                 print "exception"
                         
     def createServer(self, cmd):  
       status = -1
@@ -212,7 +196,6 @@ class LWM2MClientAutoTest():
       max_cnt = 20
       startTime = time.time()
       while cnt < max_cnt:
-        #time.sleep(0.5)
         line = p.stdout.readline()
         print(line)
         if (succ_resp in line):
