@@ -16,6 +16,7 @@ limitations under the License.
 """
 
 import urllib2
+import ssl
 import base64
 import json
 import re
@@ -53,6 +54,7 @@ class TestConfiguration():
 class BootstrapServerAdapter():
     def __init__(self, configuration):
         self.config = configuration
+        self.context = ssl._create_unverified_context()
     
     def CreateAuthRequest(self, address):
         request = urllib2.Request(address)
@@ -123,7 +125,7 @@ class BootstrapServerAdapter():
         result = urllib2.urlopen(request)
         
     def DeleteClientMapping(self, endpointName):
-        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        opener = urllib2.build_opener(urllib2.HTTPSHandler(context=self.context))
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.get_method = lambda: "DELETE"
         result = opener.open(request)
