@@ -21,6 +21,7 @@ import ssl
 import base64
 import json
 import re
+import socket
 from sys import stdout
 import time
 
@@ -34,28 +35,39 @@ class TestConfiguration():
     # If not defined, address will be defined automatically. Works only if one adapter in use. You can disable extra adapters to get it work.  
     if OWN_PC_ADDRESS == "":
         OWN_PC_ADDRESS = socket.gethostbyname(socket.gethostname())
-    #BOOTSTRAP_SERVER = "10.45.3.10"
     BOOTSTRAP_SERVER = OWN_PC_ADDRESS
     BOOTSTRAP_PORT = "5693"
-    #MDS_SERVER = "10.45.3.10"
     MDS_SERVER = OWN_PC_ADDRESS
     MDS_PORT = "5683"
-    BOOTSTRAP_SERVER_NAME = "test" #todo rename this to 
+    MDS_SERVER_NAME = "test"
     BOOTSTRAP_ADDRESS = "coap://%s:%s" % (BOOTSTRAP_SERVER, BOOTSTRAP_PORT)
     MDS_ADDRESS = "coap://%s:%s" % (MDS_SERVER, MDS_PORT)
     BOOTSTRAP_USER = "admin"
     BOOTSTRAP_PASS = "admin"
+    EP_NAME = "testep"
     
     #BOOTSTRAP_SERVER_PATH = os.path.join('C:\\','bootStrapServer','bootstrap-server-1.1.0-781','bin')
-    BOOTSTRAP_SERVER_PATH = os.path.join('C:\\','bootStrapServer','bootstrap-server-1.4.0-808','bin')
+    BOOTSTRAP_SERVER_PATH = os.path.join('C:\\','development','MDS','bootstrap-server','bin')
     BOOTSTRAP_SERVER_CMD = ['runBootstrapServer.bat']
-    DEVICE_SERVER_PATH = os.path.join('C:\\','deviceServer','device-server-internal-2.2.0-606','bin')
+    DEVICE_SERVER_PATH = os.path.join('C:\\','development','MDS','device-server','bin')
     DEVICE_SERVER_CMD = ['runDS.bat']
 
 class BootstrapServerAdapter():
     def __init__(self, configuration):
         self.config = configuration
         self.context = ssl._create_unverified_context()
+    
+    def SendRequest(self, req, opener = None):
+        if not req:
+            return
+        if opener:
+            result = opener.open(req)
+        else:
+            result = urllib2.urlopen(req, context=self.context)
+        code = result.getcode()
+        info = result.info()
+        url = result.geturl()
+        return result
     
     def CreateAuthRequest(self, address):
         request = urllib2.Request(address)
@@ -70,22 +82,32 @@ class BootstrapServerAdapter():
         
         """ { id: 3, name: "mbed-3", ip-address: "coap://localhost:5683", security-mode: "NO_SEC" }
         """
-        mapping = {"id" : 1, "name" : self.config.BOOTSTRAP_SERVER_NAME, "ip-address" : self.config.MDS_ADDRESS, "security-mode" : "NO_SEC"}
+        mapping = {"id" : 10, "name" : self.config.MDS_SERVER_NAME, "ip-address" : self.config.MDS_ADDRESS, "security-mode" : "NO_SEC"}
         request.add_data(json.dumps(mapping))
     
-        result = urllib2.urlopen(request)
+        self.SendRequest(request)
  
     
     def GetOMAServers(self):
+        servers = None
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
-        result = urllib2.urlopen(request, context=self.context)
-        servers = json.loads(result.read())
+        request.get_method = lambda: 'GET'
+        result = self.SendRequest(request)
+        if result:
+            data = result.read()
+            print "SERVER RESULT: %s" % data
+            servers = json.loads(data)
         return servers
     
     def GetOMAClients(self):
-        request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients" % self.config.BOOTSTRAP_SERVER)
-        result = urllib2.urlopen(request, context=self.context)
-        clients = json.loads(result.read())
+        clients = None
+        try:
+            request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients" % self.config.BOOTSTRAP_SERVER)
+            result = self.SendRequest(request)
+            if result:
+                clients = json.loads(result.read())
+        except:
+            print "exception"
         return clients
     
     def GetOMAServerId(self, server_name):
@@ -93,43 +115,46 @@ class BootstrapServerAdapter():
         
         # Get OMA server id
         servers = self.GetOMAServers()
-        for oma_server in servers:
-            if oma_server["name"] == server_name:
-                server_id = oma_server["id"]
-                break
-        
-        return server_id
+        if servers:
+            for oma_server in servers:
+                if oma_server["name"] == server_name:
+                    server_id = oma_server["id"]
+                    break
+            
+            return server_id
     
     def ClientMappingExists(self, endpointName):
         clients = self.GetOMAClients()
-        for client in clients:
-            if client["name"] == endpointName:
-                return True
+        if clients:
+            for client in clients:
+                if client["name"] == endpointName:
+                    return True
         return False
     
     def AddClientMapping(self, endpointName):
-        """ Adds new client with endpointName as name to domain in OMA server.
+        """ Adds new client with endpointName as name to OMA server.
         """
         
         if not endpointName:
             endpointName = "lwm2m-client-tester"
            
-        server_id = self.GetOMAServerId(self.config.BOOTSTRAP_SERVER_NAME)
+        server_id = self.GetOMAServerId(self.config.MDS_SERVER_NAME)
         
         if not server_id:
+            print "No such server exists in bootstrap server"
             return
         
         mapping = {"name" : endpointName, "omaServerId" : server_id}
         
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.add_data(json.dumps(mapping))
-        result = urllib2.urlopen(request, context=self.context)
+        result = self.SendRequest(request)
         
     def DeleteClientMapping(self, endpointName):
         opener = urllib2.build_opener(urllib2.HTTPSHandler(context=self.context))
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.get_method = lambda: "DELETE"
-        result = opener.open(request)
+        result = self.SendRequest(req, opener)
 
 class LWM2MClientAutoTest():
     """ A simple LWM2M client test that sends bootstrap and mds server information to 
@@ -150,7 +175,7 @@ class LWM2MClientAutoTest():
         selftest.notify(c.strip())
 
         selftest.notify("HOST: Sending test configuration to DUT...")
-        config_str = "<%s><%s><%s>\r\n" % (self.testconfig.BOOTSTRAP_ADDRESS, self.testconfig.MDS_ADDRESS, self.testconfig.BOOTSTRAP_SERVER_NAME)
+        config_str = "<%s><%s><%s>\r\n" % (self.testconfig.BOOTSTRAP_ADDRESS, self.testconfig.MDS_ADDRESS, self.testconfig.EP_NAME)
         selftest.notify("HOST: Sending configuration: %s" % config_str)
         selftest.mbed.serial_write(config_str)
 
@@ -236,30 +261,21 @@ class LWM2MClientAutoTest():
         
         self.stopServers()
         time.sleep(1.0)
-        
-               
+                
         os.chdir(self.testconfig.BOOTSTRAP_SERVER_PATH)
         status, _p = self.createServer(self.testconfig.BOOTSTRAP_SERVER_CMD)
-    
+     
         os.chdir(self.testconfig.DEVICE_SERVER_PATH)
         status, _p = self.createServer(self.testconfig.DEVICE_SERVER_CMD)
-           
-        time.sleep(20)
-                
-        # Send test configuration to MUT
-        self.send_configuration(selftest)
-        
-        # Read unique endpoint name from MUT
-        self.testconfig.EP_NAME = self.read_endpointname(selftest)        
             
-        # Add endpoint name as a client to OMA bootstrap server if it doesn't already exist
+        time.sleep(5)
+    
+        #Add endpoint name as a client to OMA bootstrap server if it doesn't already exist
         bootstrap_server = BootstrapServerAdapter(self.testconfig)
         selftest.notify("BootstrapServerAdapter done")
         
         bootstrap_server.AddOMAServer(selftest)
-        selftest.notify("Host: AddOMAServer done")
-        time.sleep(1.0)
-        
+        selftest.notify("Host: AddOMAServer done")        
         
         if not bootstrap_server.ClientMappingExists(self.testconfig.EP_NAME):
             selftest.notify("Host: Adding OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
@@ -267,7 +283,10 @@ class LWM2MClientAutoTest():
             time.sleep(1)
             if bootstrap_server.ClientMappingExists(self.testconfig.EP_NAME):
                 selftest.notify("Host: client added successfully")
-                                
+        
+        # Send test configuration to MUT
+        self.send_configuration(selftest)
+        
         start_time = time.time()
         try:
             while True:
