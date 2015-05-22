@@ -154,7 +154,7 @@ class BootstrapServerAdapter():
         opener = urllib2.build_opener(urllib2.HTTPSHandler(context=self.context))
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.get_method = lambda: "DELETE"
-        result = self.SendRequest(req, opener)
+        result = self.SendRequest(request, opener)
 
 class LWM2MClientAutoTest():
     """ A simple LWM2M client test that sends bootstrap and mds server information to 
