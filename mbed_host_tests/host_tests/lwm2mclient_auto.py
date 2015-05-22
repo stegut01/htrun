@@ -22,8 +22,16 @@ import re
 from sys import stdout
 import time
 
+import signal
+import subprocess
+import os
+
 class TestConfiguration():
-    OWN_PC_ADDRESS = "10.45.2.27"
+    # You can define own PC adress here, for example OWN_PC_ADDRESS = "10.45.2.134"
+    OWN_PC_ADDRESS = ""
+    # If not defined, address will be defined automatically. Works only if one adapter in use. You can disable extra adapters to get it work.  
+    if OWN_PC_ADDRESS == "":
+        OWN_PC_ADDRESS = socket.gethostbyname(socket.gethostname())
     #BOOTSTRAP_SERVER = "10.45.3.10"
     BOOTSTRAP_SERVER = OWN_PC_ADDRESS
     BOOTSTRAP_PORT = "5693"
@@ -35,6 +43,12 @@ class TestConfiguration():
     MDS_ADDRESS = "coap://%s:%s" % (MDS_SERVER, MDS_PORT)
     BOOTSTRAP_USER = "admin"
     BOOTSTRAP_PASS = "admin"
+    
+    #BOOTSTRAP_SERVER_PATH = os.path.join('C:\\','bootStrapServer','bootstrap-server-1.1.0-781','bin')
+    BOOTSTRAP_SERVER_PATH = os.path.join('C:\\','bootStrapServer','bootstrap-server-1.4.0-808','bin')
+    BOOTSTRAP_SERVER_CMD = ['runBootstrapServer.bat']
+    DEVICE_SERVER_PATH = os.path.join('C:\\','deviceServer','device-server-internal-2.2.0-606','bin')
+    DEVICE_SERVER_CMD = ['runDS.bat']
 
 class BootstrapServerAdapter():
     def __init__(self, configuration):
@@ -48,17 +62,25 @@ class BootstrapServerAdapter():
         request.add_header("Accept", "application/json")
         return request
     
-    def GetOMAServers(self):
-        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
-        result = urllib2.urlopen(request)
-        servers = json.loads(result.read())
-        #puukko
-        #selftest.notify("Host: servers: %s" % servers)
+    def AddOMAServer(self, selftest):
+        request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
         
+        """ { id: 3, name: "mbed-3", ip-address: "coap://localhost:5683", security-mode: "NO_SEC" }
+        """
+        mapping = {"id" : 1, "name" : self.config.BOOTSTRAP_SERVER_NAME, "ip-address" : self.config.MDS_ADDRESS, "security-mode" : "NO_SEC"}
+        request.add_data(json.dumps(mapping))
+    
+        result = urllib2.urlopen(request)
+ 
+    
+    def GetOMAServers(self):
+        request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
+        result = urllib2.urlopen(request)
+        servers = json.loads(result.read())        
         return servers
     
     def GetOMAClients(self):
-        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-clients" % self.config.BOOTSTRAP_SERVER)
+        request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients" % self.config.BOOTSTRAP_SERVER)
         result = urllib2.urlopen(request)
         clients = json.loads(result.read())
         return clients
@@ -96,13 +118,13 @@ class BootstrapServerAdapter():
         
         mapping = {"name" : endpointName, "omaServerId" : server_id}
         
-        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
+        request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.add_data(json.dumps(mapping))
         result = urllib2.urlopen(request)
         
     def DeleteClientMapping(self, endpointName):
         opener = urllib2.build_opener(urllib2.HTTPHandler)
-        request = self.CreateAuthRequest("http://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
+        request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-clients/%s" % (self.config.BOOTSTRAP_SERVER, endpointName))
         request.get_method = lambda: "DELETE"
         result = opener.open(request)
 
@@ -112,7 +134,7 @@ class LWM2MClientAutoTest():
     """
     
     testconfig = TestConfiguration()
-        
+                
     """ Function for configuring test parameters of DUT.
     """
     def send_configuration(self, selftest):
@@ -172,11 +194,73 @@ class LWM2MClientAutoTest():
 #                 print "Servers for %s: %s" % (ip, servers)
 #             except:
 #                 print "exception"
-                
+                        
+    def createServer(self, cmd):  
+      status = -1
+      p = None
+      succ_resp = 'Started'
+      
+      try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+      except Exception as ex:
+        print('Host: Exception starting subprocess %s' %str(ex))
+        return status, p
+          
+      cnt = 0
+      max_cnt = 20
+      startTime = time.time()
+      while cnt < max_cnt:
+        #time.sleep(0.5)
+        line = p.stdout.readline()
+        print(line)
+        if (succ_resp in line):
+          status = 0
+          print('Host: Server started OK')
+          break
+        cnt = cnt+1
+        if cnt >= max_cnt:
+          print('Host: Server starting timeout: %s sec\n' % (time.time() - startTime) )    
+          break  
+      return status, p
+  
+    def stopServers(self):  
+        _lines = os.popen('wmic process where caption="java.exe" get commandline,processid').read()
+        _lines = re.sub("\s\s+" , " ", _lines).strip(os.linesep)
+        _lines_list = _lines.split('java')
+        _found_processes = []
+        servers_found = False
+        PIDlist = []
+        for item in _lines_list:
+            if ('bootstrapserver') in item:
+                _found_processes.append(item)
+                servers_found = True
+            if ('deviceserver') in item:
+                _found_processes.append(item)
+                servers_found = True
+        
+        if servers_found == True:
+            for item in  _found_processes:
+                PIDlist.append(item.split(' ')[-2])
+            for _pid in PIDlist:
+                os.system('taskkill /F /PID %s' %_pid)  
+                print('Host: Server (pid: %s) killed OK' %_pid)  
+        
     def test(self, selftest):
         result = selftest.RESULT_PASSIVE
         testoutput = ""
         
+        self.stopServers()
+        time.sleep(1.0)
+        
+               
+        os.chdir(self.testconfig.BOOTSTRAP_SERVER_PATH)
+        status, _p = self.createServer(self.testconfig.BOOTSTRAP_SERVER_CMD)
+    
+        os.chdir(self.testconfig.DEVICE_SERVER_PATH)
+        status, _p = self.createServer(self.testconfig.DEVICE_SERVER_CMD)
+           
+        time.sleep(20)
+                
         # Send test configuration to MUT
         self.send_configuration(selftest)
         
@@ -185,10 +269,20 @@ class LWM2MClientAutoTest():
             
         # Add endpoint name as a client to OMA bootstrap server if it doesn't already exist
         bootstrap_server = BootstrapServerAdapter(self.testconfig)
+        selftest.notify("BootstrapServerAdapter done")
+        
+        bootstrap_server.AddOMAServer(selftest)
+        selftest.notify("Host: AddOMAServer done")
+        time.sleep(1.0)
+        
+        
         if not bootstrap_server.ClientMappingExists(self.testconfig.EP_NAME):
             selftest.notify("Host: Adding OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
             bootstrap_server.AddClientMapping(self.testconfig.EP_NAME)
-        
+            time.sleep(1)
+            if bootstrap_server.ClientMappingExists(self.testconfig.EP_NAME):
+                selftest.notify("Host: client added successfully")
+                                
         start_time = time.time()
         try:
             while True:
@@ -211,6 +305,8 @@ class LWM2MClientAutoTest():
         
         bootstrap_server.DeleteClientMapping(self.testconfig.EP_NAME)
 
+        self.stopServers()
+        
         elapsedTime = time.time() - start_time
         selftest.notify("Host:Test completed in %.0f seconds\n" % elapsedTime)
         
