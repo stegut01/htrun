@@ -207,31 +207,32 @@ class LWM2MClientAutoTest():
         return selftest.RESULT_FAILURE
                         
     def createServer(self, cmd):  
-      status = -1
-      p = None
-      succ_resp = 'Started'
-      
-      try:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-      except Exception as ex:
-        print('Host: Exception starting subprocess %s' %str(ex))
+        status = -1
+        p = None
+        succ_resp = 'Started'
+        
+        try:
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        except Exception as ex:
+            print('Host: Exception starting subprocess %s' %str(ex))
+            return status, p
+              
+        cnt = 0
+        max_cnt = 20
+        startTime = time.time()
+        while cnt < max_cnt:
+            #time.sleep(0.5)
+            line = p.stdout.readline()
+            print(line)
+            if (succ_resp in line):
+                status = 0
+                print('Host: Server started OK')
+                break
+            cnt = cnt+1
+            if cnt >= max_cnt:
+                print('Host: Server starting timeout: %s sec\n' % (time.time() - startTime) )    
+                break
         return status, p
-          
-      cnt = 0
-      max_cnt = 20
-      startTime = time.time()
-      while cnt < max_cnt:
-        line = p.stdout.readline()
-        print(line)
-        if (succ_resp in line):
-          status = 0
-          print('Host: Server started OK')
-          break
-        cnt = cnt+1
-        if cnt >= max_cnt:
-          print('Host: Server starting timeout: %s sec\n' % (time.time() - startTime) )    
-          break  
-      return status, p
   
     def stopServers(self):  
         _lines = os.popen('wmic process where caption="java.exe" get commandline,processid').read()
@@ -261,7 +262,7 @@ class LWM2MClientAutoTest():
         
         self.stopServers()
         time.sleep(5.0)
-                
+        
         os.chdir(self.testconfig.BOOTSTRAP_SERVER_PATH)
         status, _p = self.createServer(self.testconfig.BOOTSTRAP_SERVER_CMD)
      
