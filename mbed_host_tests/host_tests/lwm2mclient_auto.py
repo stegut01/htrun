@@ -260,7 +260,7 @@ class LWM2MClientAutoTest():
         testoutput = ""
         
         self.stopServers()
-        time.sleep(1.0)
+        time.sleep(5.0)
                 
         os.chdir(self.testconfig.BOOTSTRAP_SERVER_PATH)
         status, _p = self.createServer(self.testconfig.BOOTSTRAP_SERVER_CMD)
@@ -268,7 +268,7 @@ class LWM2MClientAutoTest():
         os.chdir(self.testconfig.DEVICE_SERVER_PATH)
         status, _p = self.createServer(self.testconfig.DEVICE_SERVER_CMD)
             
-        time.sleep(5)
+        time.sleep(10)
     
         #Add endpoint name as a client to OMA bootstrap server if it doesn't already exist
         bootstrap_server = BootstrapServerAdapter(self.testconfig)
