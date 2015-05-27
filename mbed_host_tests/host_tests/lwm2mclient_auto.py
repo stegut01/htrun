@@ -15,7 +15,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import ssl
 import urllib2
 import ssl
 import base64
@@ -46,10 +45,10 @@ class TestConfiguration():
     BOOTSTRAP_PASS = "admin"
     EP_NAME = "testep"
     
-    #BOOTSTRAP_SERVER_PATH = os.path.join('C:\\','bootStrapServer','bootstrap-server-1.1.0-781','bin')
-    BOOTSTRAP_SERVER_PATH = os.path.join('C:\\','development','MDS','bootstrap-server','bin')
+    lwm2mCONF_folder_path = os.path.join(os.getcwd(),'..','lwm2m-CONF')
+    BOOTSTRAP_SERVER_PATH = os.path.join(lwm2mCONF_folder_path,'bootstrap-server','bin')
     BOOTSTRAP_SERVER_CMD = ['runBootstrapServer.bat']
-    DEVICE_SERVER_PATH = os.path.join('C:\\','development','MDS','device-server','bin')
+    DEVICE_SERVER_PATH = os.path.join(lwm2mCONF_folder_path,'device-server','bin')
     DEVICE_SERVER_CMD = ['runDS.bat']
 
 class BootstrapServerAdapter():
@@ -80,7 +79,7 @@ class BootstrapServerAdapter():
     def AddOMAServer(self, selftest):
         request = self.CreateAuthRequest("https://%s:8090/rest-api/oma-servers" % self.config.BOOTSTRAP_SERVER)
         
-        """ { id: 3, name: "mbed-3", ip-address: "coap://localhost:5683", security-mode: "NO_SEC" }
+        """ { id: 3, name: "mbed-3", ip-address: "coap://localHOST:5683", security-mode: "NO_SEC" }
         """
         mapping = {"id" : 10, "name" : self.config.MDS_SERVER_NAME, "ip-address" : self.config.MDS_ADDRESS, "security-mode" : "NO_SEC"}
         request.add_data(json.dumps(mapping))
@@ -221,7 +220,6 @@ class LWM2MClientAutoTest():
         max_cnt = 20
         startTime = time.time()
         while cnt < max_cnt:
-            #time.sleep(0.5)
             line = p.stdout.readline()
             print(line)
             if (succ_resp in line):
@@ -254,7 +252,7 @@ class LWM2MClientAutoTest():
                 PIDlist.append(item.split(' ')[-2])
             for _pid in PIDlist:
                 os.system('taskkill /F /PID %s' %_pid)  
-                print('Host: Server (pid: %s) killed OK' %_pid)  
+                print('HOST: Server (pid: %s) killed OK' %_pid)  
         
     def test(self, selftest):
         result = selftest.RESULT_PASSIVE
@@ -262,28 +260,36 @@ class LWM2MClientAutoTest():
         
         self.stopServers()
         time.sleep(5.0)
+
+        selftest.notify("HOST: Running folder: %s" %(os.getcwd()))
         
+        selftest.notify("HOST: PC IP address to be used by servers: %s" %self.testconfig.OWN_PC_ADDRESS)           
+
         os.chdir(self.testconfig.BOOTSTRAP_SERVER_PATH)
+        selftest.notify("HOST: Bootstrap Server folder %s" %self.testconfig.BOOTSTRAP_SERVER_PATH)
         status, _p = self.createServer(self.testconfig.BOOTSTRAP_SERVER_CMD)
-     
+        
         os.chdir(self.testconfig.DEVICE_SERVER_PATH)
-        status, _p = self.createServer(self.testconfig.DEVICE_SERVER_CMD)
-            
-        time.sleep(10)
-    
+
+        selftest.notify("HOST: Device Server folder %s" %self.testconfig.DEVICE_SERVER_PATH)
+        status, _p = self.createServer(self.testconfig.DEVICE_SERVER_CMD)       
+        time.sleep(30)
+     
         #Add endpoint name as a client to OMA bootstrap server if it doesn't already exist
         bootstrap_server = BootstrapServerAdapter(self.testconfig)
-        selftest.notify("BootstrapServerAdapter done")
+        selftest.notify("HOST: BootstrapServerAdapter done")
         
         bootstrap_server.AddOMAServer(selftest)
-        selftest.notify("Host: AddOMAServer done")        
+        selftest.notify("HOST: AddOMAServer done")        
         
         if not bootstrap_server.ClientMappingExists(self.testconfig.EP_NAME):
-            selftest.notify("Host: Adding OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
+            selftest.notify("HOST: Adding OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
             bootstrap_server.AddClientMapping(self.testconfig.EP_NAME)
             time.sleep(1)
             if bootstrap_server.ClientMappingExists(self.testconfig.EP_NAME):
-                selftest.notify("Host: client added successfully")
+                selftest.notify("HOST: client added successfully")
+        
+        time.sleep(2)
         
         # Send test configuration to MUT
         self.send_configuration(selftest)
@@ -306,13 +312,13 @@ class LWM2MClientAutoTest():
             selftest.notify("\r\n[CTRL+C] exit")
             result = selftest.RESULT_ERROR
         
-        selftest.notify("Host: Deleting OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
+        selftest.notify("HOST: Deleting OMA bootstrap client mapping for %s" % self.testconfig.EP_NAME)
         
         bootstrap_server.DeleteClientMapping(self.testconfig.EP_NAME)
 
         self.stopServers()
         
         elapsedTime = time.time() - start_time
-        selftest.notify("Host:Test completed in %.0f seconds\n" % elapsedTime)
+        selftest.notify("HOST:Test completed in %.0f seconds\n" % elapsedTime)
         
         return result
