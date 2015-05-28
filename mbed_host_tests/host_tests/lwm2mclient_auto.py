@@ -45,7 +45,7 @@ class TestConfiguration():
     BOOTSTRAP_PASS = "admin"
     EP_NAME = "testep"
     
-    lwm2mCONF_folder_path = os.path.join(os.getcwd(),'..','lwm2m-CONF')
+    lwm2mCONF_folder_path = os.path.join(os.getcwd(),'..','..','lwm2m-CONF')
     BOOTSTRAP_SERVER_PATH = os.path.join(lwm2mCONF_folder_path,'bootstrap-server','bin')
     BOOTSTRAP_SERVER_CMD = ['runBootstrapServer.bat']
     DEVICE_SERVER_PATH = os.path.join(lwm2mCONF_folder_path,'device-server','bin')
@@ -316,7 +316,7 @@ class LWM2MClientAutoTest():
         
         bootstrap_server.DeleteClientMapping(self.testconfig.EP_NAME)
 
-        self.stopServers()
+        #self.stopServers()
         
         elapsedTime = time.time() - start_time
         selftest.notify("HOST:Test completed in %.0f seconds\n" % elapsedTime)
