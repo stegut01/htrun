@@ -49,7 +49,7 @@ class Test(HostTestResults):
         self.mbed = Mbed(options)
         self.mutex = Lock() # Used to sync console output prints
         self.print_thread = None
-        self.print_thread_stop_flag = False
+        self.print_thread_flag = False  # True, serial dump, False - serial dump stop (thread ends)
 
     def detect_test_config(self, verbose=False):
         """ Detects test case configuration
@@ -62,12 +62,22 @@ class Test(HostTestResults):
                 break
             else:
                 # Detect if this is property from TEST_ENV print
-                m = re.search('{([\w_]+);([\w\d\+ ]+)}}', line[:-1])
+                m = re.search('{([\w_]+);(.+)}}', line, flags=re.DOTALL)
                 if m and len(m.groups()) == 2:
+                    key = m.group(1)
+
+                    # clean up quote characters and concatinate 
+                    # multiple quoted strings.
+                    g = re.findall('[\"\'](.*?)[\"\']',m.group(2))
+                    if len(g)>0:
+                        val = "".join(g)
+                    else:
+                        val = m.group(2)
+
                     # This is most likely auto-detection property
-                    result[m.group(1)] = m.group(2)
+                    result[key] = val
                     if verbose:
-                        self.notify("HOST: Property '%s' = '%s'"% (m.group(1), m.group(2)))
+                        self.notify("HOST: Property '%s' = '%s'"% (key, val))
                 else:
                     # We can check if this is TArget Id in mbed specific format
                     m2 = re.search('^([\$]+)([a-fA-F0-9]+)', line[:-1])
@@ -115,9 +125,9 @@ class Test(HostTestResults):
         """ Function is used to print serial port data in background
             To stop dumping serial call dump_serial_end() method
         """
-        if not self.print_thread_stop_flag:
+        if not self.print_thread_flag:
             if self.print_thread is None:
-                self.print_thread_stop_flag = True
+                self.print_thread_flag = True
                 self.print_thread = Thread(target=self.dump_serial_thread_func)
                 self.print_thread.start()
                 return True
@@ -125,22 +135,29 @@ class Test(HostTestResults):
 
     def dump_serial_thread_func(self):
         self.notify('HOST: Serial port dump started...')
-        while self.print_thread_stop_flag:
+        while self.print_thread_flag:
             c = self.mbed.serial_read(512)
             if c is not None:
                 self.notify(c, newline=False)
+        self.print_thread = None
 
     def dump_serial_end(self):
         """ Stop dumping serial port in background
         """
-        if not self.print_thread_stop_flag:
-            self.print_thread_stop_flag = True
+        self.print_thread_flag = False
 
     def print_result(self, result):
         """ Test result unified printing function
         """
         self.notify("\r\n{{%s}}\r\n{{end}}" % result)
 
+    def finish(self):
+        """ dctor for this class, finishes tasks and closes resources
+        """
+        self.dump_serial_end()
+        # We are waiting for serial port thread dump to end
+        while self.print_thread_flag:
+            pass
 
 class DefaultTestSelectorBase(Test):
     """ Test class with serial port initialization
