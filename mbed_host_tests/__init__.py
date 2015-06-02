@@ -39,6 +39,7 @@ from host_tests.tcpecho_client_auto import TCPEchoClientTest
 from host_tests.udpecho_client_auto import UDPEchoClientTest
 from host_tests.test_socket_server_udp import UDPSocketServerEchoExtTest
 from host_tests.test_socket_server_tcp import TCPSocketServerEchoExtTest
+from host_tests.websocket_server import WSCliendtTest()
 
 # Basic host test functionality
 from host_tests_runner.host_test import DefaultTestSelectorBase
@@ -61,6 +62,7 @@ HOSTREGISTRY.register_host_test("tcpecho_client_auto", TCPEchoClientTest())
 HOSTREGISTRY.register_host_test("udpecho_client_auto", UDPEchoClientTest())
 HOSTREGISTRY.register_host_test("test_socket_server_udp", UDPSocketServerEchoExtTest())
 HOSTREGISTRY.register_host_test("test_socket_server_tcp", TCPSocketServerEchoExtTest())
+HOSTREGISTRY.register_host_test("websocket_client_test", WSCliendtTest()())
 
 ###############################################################################
 # Functional interface for test supervisor registry
