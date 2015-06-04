@@ -2,6 +2,8 @@
 
 import socket, base64, re, hashlib, io, fcntl, struct
 
+test_result = True
+
 def unmask(masking_key, msg):
     decoded_msg = ''
     b = io.BytesIO(msg)
@@ -22,6 +24,8 @@ class client_thread ():
         self.sock.setblocking(1)
 
     def run(self):
+        global test_result
+
         chunk = self.sock.recv(2048)
         if chunk == '':
             raise RuntimeError("socket connection broken")
@@ -41,45 +45,49 @@ class client_thread ():
 
         self.sock.sendall(r_str)
 
-        while True:
-            try:
-                dat = self.sock.recv(2048)
-            except Exception as e:
-                print str(e)
-                break
-            if not dat:
-                print "HOST: no data, exiting"
-                break
+        try:
+            dat = self.sock.recv(2048)
+        except Exception as e:
+            print str(e)
+            test_result = False
+            return
+        if not dat:
+            test_result = False
+            print "HOST: no data, exiting"
+            return
 
-            dat = io.BytesIO(dat)
-            frame = {}
+        dat = io.BytesIO(dat)
+        frame = {}
 
-            buf = ord(dat.read(1))
-            frame['FIN'] = buf >> 7
-            frame['RSV1'] = buf & 0b01000000 << 1 >> 7
-            frame['RSV2'] = buf & 0b00100000 << 2 >> 7
-            frame['RSV3'] = buf & 0b00010000 << 3 >> 7
-            frame['opcode'] = buf & 0b00001111
-            buf = ord(dat.read(1))
-            frame['MASK'] = buf >> 7
-            frame['Payload len'] = buf & 0b01111111
-            frame['Masking-key'] =  (
-                ( ord(dat.read(1)) <<  0 ) |
-                ( ord(dat.read(1)) <<  8 ) |
-                ( ord(dat.read(1)) << 16 ) |
-                ( ord(dat.read(1)) << 24 )
-            )
-            frame['Application Message'] = dat.read()
+        buf = ord(dat.read(1))
+        frame['FIN'] = buf >> 7
+        frame['RSV1'] = buf & 0b01000000 << 1 >> 7
+        frame['RSV2'] = buf & 0b00100000 << 2 >> 7
+        frame['RSV3'] = buf & 0b00010000 << 3 >> 7
+        frame['opcode'] = buf & 0b00001111
+        buf = ord(dat.read(1))
+        frame['MASK'] = buf >> 7
+        frame['Payload len'] = buf & 0b01111111
+        frame['Masking-key'] =  (
+            ( ord(dat.read(1)) <<  0 ) |
+            ( ord(dat.read(1)) <<  8 ) |
+            ( ord(dat.read(1)) << 16 ) |
+            ( ord(dat.read(1)) << 24 )
+        )
+        frame['Application Message'] = dat.read()
 
-            key = frame['Masking-key']
-            masked_msg = frame['Application Message']
-            msg = unmask(key, masked_msg)
+        key = frame['Masking-key']
+        masked_msg = frame['Application Message']
+        msg = unmask(key, masked_msg)
 
-            if "Can you hear me?" in msg:
-                resp = chr(0b10000010) + chr(0b00000101) + "roger"
-                self.sock.sendall(resp)
-                self.sock.shutdown(socket.SHUT_RDWR)
-                break
+        if msg == "Can you hear me?":
+            resp = chr(0b10000010) + chr(0b00000101) + "roger"
+            self.sock.sendall(resp)
+        else:
+            test_result = False
+
+        self.sock.shutdown(socket.SHUT_RDWR)
+        return
 
 def get_ip_address(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -91,12 +99,12 @@ def get_ip_address(ifname):
 
 class WSCliendtTest():
     def test(self, selftest):
-        test_result = True
+        global test_result
 
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
         # reuse previously exited socket.
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        
+
         SERVER_PORT = 2312
         s.bind(("0.0.0.0", SERVER_PORT))
 
