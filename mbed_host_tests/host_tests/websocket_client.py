@@ -20,7 +20,7 @@ def unmask(masking_key, msg):
 
 class WSServerTest():
     def test(self, selftest):
-        test_result = True
+        self.test_result = False
 
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
         # reuse previously exited socket.
@@ -41,7 +41,7 @@ class WSServerTest():
         s.close()
         selftest.dump_serial_end()
 
-        return selftest.RESULT_SUCCESS if test_result else selftest.RESULT_FAILURE
+        return selftest.RESULT_SUCCESS if self.test_result else selftest.RESULT_FAILURE
 
     def run(self):
         # send opening handshake
@@ -79,14 +79,11 @@ class WSServerTest():
 
         while True:
             try:
-                print "try to receive some data"
                 dat = self.sock.recv(2048)
-                print "data received", dat
             except Exception as e:
                 print str(e)
                 break
             if not dat:
-                print "no data, exiting"
                 break
 
             dat = io.BytesIO(dat)
@@ -103,6 +100,5 @@ class WSServerTest():
             frame['Payload len'] = buf & 0b01111111
             frame['Application Message'] = dat.read()
 
-            print "msg: ", frame['Application Message'];
             if "roger" == frame['Application Message']:
-                print "success"
+                self.test_result = True
