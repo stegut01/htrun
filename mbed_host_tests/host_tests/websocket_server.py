@@ -1,12 +1,9 @@
 #!/usr/bin/env python
 
-import re
-import socket, base64
-import threading
-import hashlib
-import io
+import socket, base64, re, hashlib, io, fcntl, struct
 
 def unmask(masking_key, msg):
+    decoded_msg = ''
     b = io.BytesIO(msg)
     b.seek(0)
     i = 0
@@ -14,16 +11,13 @@ def unmask(masking_key, msg):
     while buf != '':
         mask = ( masking_key >> (i%4 *8) ) & 0xff
         buf = ord(buf) ^ mask
-        print "unmasked buf", buf, unichr(buf)
+        decoded_msg += unichr(buf)
         buf = b.read(1)
         i += 1
+    return decoded_msg
 
-    return buf
-
-
-class client_thread (threading.Thread):
+class client_thread ():
     def __init__(self, sock):
-        threading.Thread.__init__(self)
         self.sock = sock
         self.sock.setblocking(1)
 
@@ -31,8 +25,6 @@ class client_thread (threading.Thread):
         chunk = self.sock.recv(2048)
         if chunk == '':
             raise RuntimeError("socket connection broken")
-        #chunks.append(chunk)
-        print repr(chunk)
 
         headers = dict(re.findall(r"(?P<name>.*?): (?P<value>.*?)\r\n", chunk))
 
@@ -46,9 +38,8 @@ class client_thread (threading.Thread):
 
         r_str = "\r\n".join( [ str(x[0]) + ": " + x[1] for x in response.items() ] ) + "\r\n\r\n"
         r_str = "HTTP/1.1 101 Switching Protocols\r\n" + r_str
-        print repr(r_str)
 
-        self.sock.send(r_str)
+        self.sock.sendall(r_str)
 
         while True:
             try:
@@ -56,9 +47,10 @@ class client_thread (threading.Thread):
             except Exception as e:
                 print str(e)
                 break
-            if not dat: break
+            if not dat:
+                print "HOST: no data, exiting"
+                break
 
-            #dat =  binascii.a2b_uu(dat)
             dat = io.BytesIO(dat)
             frame = {}
 
@@ -82,11 +74,20 @@ class client_thread (threading.Thread):
             key = frame['Masking-key']
             masked_msg = frame['Application Message']
             msg = unmask(key, masked_msg)
-            if msg == "Can you hear me?":
+
+            if "Can you hear me?" in msg:
                 resp = chr(0b10000010) + chr(0b00000101) + "roger"
                 self.sock.sendall(resp)
-                print repr(resp)
+                self.sock.shutdown(socket.SHUT_RDWR)
+                break
 
+def get_ip_address(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(fcntl.ioctl(
+        s.fileno(),
+        0x8915,  # SIOCGIFADDR
+        struct.pack('256s', ifname[:15])
+    )[20:24])
 
 class WSCliendtTest():
     def test(self, selftest):
@@ -97,24 +98,28 @@ class WSCliendtTest():
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         
         SERVER_PORT = 2312
-        s.bind(("localhost", SERVER_PORT))
-        SERVER_IP = str(socket.gethostbyname(socket.getfqdn()))
-        selftest.mbed.serial_write("{}:{}\n".format(SERVER_IP, SERVER_PORT))
+        s.bind(("0.0.0.0", SERVER_PORT))
+
+        # FIXME: find a robust method to get the ip
+        SERVER_IP = get_ip_address('eth0')
+        s.listen(1)
+
+        # wait for the mbed to be ready
+        selftest.mbed.serial_readline()
+
+        url = "{}:{}\r\n".format(SERVER_IP, SERVER_PORT)
+        selftest.mbed.serial_write(url)
         selftest.mbed.flush()
-        s.listen(5)
 
         selftest.dump_serial()
 
         try:
-            while 1:
-                # accept connections from outside
-                (clientsocket, address) = s.accept()
-                # threaded server
-                print clientsocket, address
-                ct = client_thread(clientsocket)
-                ct.run()
+            # accept connections from outside
+            (clientsocket, address) = s.accept()
+            ct = client_thread(clientsocket)
+            ct.run()
         finally:
+            selftest.dump_serial_end()
             s.close()
 
-        selftest.dump_serial_end()
         return selftest.RESULT_SUCCESS if test_result else selftest.RESULT_FAILURE
