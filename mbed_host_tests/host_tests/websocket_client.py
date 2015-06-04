@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
-import re
-import socket
-import io
+import re, socket, io
 from random import getrandbits
 
 def unmask(masking_key, msg):
-    decoded_msg = ''
+    decoded_msg = bytearray()
     b = io.BytesIO(msg)
     b.seek(0)
     i = 0
@@ -14,17 +12,14 @@ def unmask(masking_key, msg):
     while buf != '':
         mask = ( masking_key >> (i%4 *8) ) & 0xff
         buf = ord(buf) ^ mask
-        # print "unmasked buf", buf, unichr(buf)
-        decoded_msg += unichr(buf)
+        decoded_msg.append(buf)
         buf = b.read(1)
         i += 1
 
     return decoded_msg
 
-class WSCliendtTest():
+class WSServerTest():
     def test(self, selftest):
-        selftest.dump_serial()
-
         test_result = True
 
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
@@ -32,9 +27,12 @@ class WSCliendtTest():
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         line = selftest.mbed.serial_readline()
+        selftest.dump_serial()
 
-        SERVER_IP = line.split()[-1]
-        s.connect(SERVER_IP)
+        SERVER_IP = line.split()[-1].split(":")[0]
+        SERVER_PORT = int(line.split()[-1].split(":")[1])
+        print SERVER_IP, SERVER_PORT
+        s.connect( (SERVER_IP, SERVER_PORT) )
 
         self.sock = s
         self.sock.setblocking(1)
@@ -67,15 +65,16 @@ class WSCliendtTest():
 
         # compare the reply key
         if rsp_code == "DdLWT/1JcX+nQFHebYP+rqEx5xI=":
+            print "HOST: Got correct closing handshake"
             # send a message encoded with websocket
             msg = "Can you hear me?"
             masking_key = getrandbits(32);
-            frame = chr(0b10000010) + chr(0b10000000&len(msg)) + \
-                    chr( (masking_key&0xf000) >> 24 ) + \
-                    chr( (masking_key&0x0f00) >> 16 ) + \
-                    chr( (masking_key&0x00f0) >> 8  ) + \
-                    chr( (masking_key&0x000f) >> 0  ) + \
-                    unmask(masking_key, msg)
+            frame = chr(0b10000001) + chr(0b10000000|len(msg)) + \
+                    chr( (masking_key >> 0 ) & 0xff ) + \
+                    chr( (masking_key >> 8 ) & 0xff ) + \
+                    chr( (masking_key >> 16) & 0xff ) + \
+                    chr( (masking_key >> 24) & 0xff )
+            frame = bytearray(frame) + unmask(masking_key, msg)
             self.sock.sendall(frame)
 
         while True:
@@ -102,18 +101,8 @@ class WSCliendtTest():
             buf = ord(dat.read(1))
             frame['MASK'] = buf >> 7
             frame['Payload len'] = buf & 0b01111111
-            frame['Masking-key'] =  (
-                ( ord(dat.read(1)) <<  0 ) |
-                ( ord(dat.read(1)) <<  8 ) |
-                ( ord(dat.read(1)) << 16 ) |
-                ( ord(dat.read(1)) << 24 )
-            )
             frame['Application Message'] = dat.read()
 
-            key = frame['Masking-key']
-            masked_msg = frame['Application Message']
-            msg = unmask(key, masked_msg)
-
-            print "msg: ", msg;
-            if "roger" in msg:
+            print "msg: ", frame['Application Message'];
+            if "roger" == frame['Application Message']:
                 print "success"
