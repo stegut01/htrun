@@ -97,7 +97,7 @@ def get_ip_address(ifname):
         struct.pack('256s', ifname[:15])
     )[20:24])
 
-class WSCliendtTest():
+class WSClientTest():
     def test(self, selftest):
         global test_result
 
