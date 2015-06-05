@@ -100,5 +100,9 @@ class WSServerTest():
             frame['Payload len'] = buf & 0b01111111
             frame['Application Message'] = dat.read()
 
-            if "roger" == frame['Application Message']:
+            msg = frame['Application Message']
+            expected = "roger"
+            if expected == msg:
                 self.test_result = True
+            else:
+                print "HOST: Expected {} Got {}".format(expected, msg)
