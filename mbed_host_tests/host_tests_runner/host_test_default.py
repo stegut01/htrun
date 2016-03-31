@@ -120,6 +120,9 @@ class DefaultTestSelector(DefaultTestSelectorBase):
         start_time = time()
 
         try:
+            number_of_testcases = 0
+            test_case_list = []
+            reset = False
             consume_preamble_events = True
             while (time() - start_time) < timeout_duration:
                 # Handle default events like timeout, host_test_name, ...
@@ -191,10 +194,26 @@ class DefaultTestSelector(DefaultTestSelectorBase):
                             break
                         elif key == '__reset_dut':
                             # Disconnecting and re-connecting comm process will reset DUT
+                            reset = True
+                            # Add reset testcase to list to start at same case after reset
+                            test_case_list.append(number_of_testcases - len(test_case_list))
                             dut_event_queue.put(('__host_test_finished', True, time()))
                             p.join()
                             # self.mbed.update_device_info() - This call is commented but left as it would be required in hard reset.
                             p = start_conn_process()
+                        elif key == '__testcase_count':
+                            # Number of test cases
+                            number_of_testcases = int(value)
+                        elif key == '__test_start_from':
+                            # Create list with number of test cases
+                            if not reset:
+                                test_case_list = [i for i in reversed(range(int(value), number_of_testcases+1))]
+                            else:
+                                self.logger.prn_inf("{{__test_start_from;0}} ignored because of reset")
+                                reset = False
+                        elif key == '__testcase_number':
+                            # Set number of next test case
+                            dut_event_queue.put(('__testcase_number', test_case_list.pop(), time()))
                         elif key == '__notify_conn_lost':
                             # This event is sent by conn_process, DUT connection was lost
                             self.logger.prn_err(value)
