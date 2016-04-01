@@ -20,6 +20,7 @@ Author: Przemyslaw Wirkus <Przemyslaw.Wirkus@arm.com>
 
 import sys
 import traceback
+import random
 from time import time
 from Queue import Empty as QueueEmpty   # Queue here refers to the module, not a class
 
@@ -80,6 +81,10 @@ class DefaultTestSelector(DefaultTestSelectorBase):
         event_queue = Queue()       # Events from DUT to host
         dut_event_queue = Queue()   # Events from host to DUT {k;v}
 
+        # Values used to generate random seed for test case execution order shuffle
+        SHUFFLE_SEED_ROUND = 10 # Value used to round float random seed
+        shuffle_random_seed = round(random.random(), SHUFFLE_SEED_ROUND)
+            
         def callback__notify_prn(key, value, timestamp):
             """! Handles __norify_prn. Prints all lines in separate log line """
             for line in value.splitlines():
@@ -123,6 +128,7 @@ class DefaultTestSelector(DefaultTestSelectorBase):
             number_of_testcases = 0
             test_case_list = []
             reset = False
+            shuffle = False
             consume_preamble_events = True
             while (time() - start_time) < timeout_duration:
                 # Handle default events like timeout, host_test_name, ...
@@ -201,13 +207,25 @@ class DefaultTestSelector(DefaultTestSelectorBase):
                             p.join()
                             # self.mbed.update_device_info() - This call is commented but left as it would be required in hard reset.
                             p = start_conn_process()
+                        elif key == '__shuffle_seed':
+                            # Shuffle seed (If you want to reproduce your shuffle order please use seed provided in console output)
+                            shuffle_random_seed = round(float(value), SHUFFLE_SEED_ROUND)
+                            shuffle = True
+                        elif key == '__shuffle':
+                            # Enable shuffling of test case execution order
+                            shuffle = True
                         elif key == '__testcase_count':
                             # Number of test cases
                             number_of_testcases = int(value)
                         elif key == '__test_start_from':
                             # Create list with number of test cases
                             if not reset:
-                                test_case_list = [i for i in reversed(range(int(value), number_of_testcases+1))]
+                                test_case_list = [i for i in reversed(range(int(value), number_of_testcases))]
+                                if shuffle:
+                                    self.logger.prn_inf("Shuffle test case execution order")
+                                    random.shuffle(test_case_list, lambda: shuffle_random_seed)
+                                # Call test teardown handler at end of test
+                                test_case_list.insert(0, number_of_testcases)
                             else:
                                 self.logger.prn_inf("{{__test_start_from;0}} ignored because of reset")
                                 reset = False
@@ -296,7 +314,8 @@ class DefaultTestSelector(DefaultTestSelectorBase):
         if self.test_supervisor:
             self.test_supervisor.teardown()
         self.logger.prn_inf("teardown() finished")
-
+        self.logger.prn_inf("shuffle_seed: %f"% shuffle_random_seed)
+        
         return result
 
     def execute(self):
